@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { usePlaygroundSettings } from './PlaygroundContext';
 
 const MAX_HEIGHT = 500;
 
@@ -23,6 +24,7 @@ const ParticlesPlayground: React.FC = () => {
   const [style, setStyle] = useState<Style>('Floating');
   const [palette, setPalette] = useState<'Pastel' | 'Neon'>('Pastel');
   const particlesRef = useRef<Particle[]>([]);
+  const { theme, mode } = usePlaygroundSettings();
 
   const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
   const colors = palette === 'Pastel' ? PASTEL : NEON;
@@ -34,12 +36,15 @@ const ParticlesPlayground: React.FC = () => {
 
   const spawn = (x: number, y: number) => {
     const arr = particlesRef.current;
-    for (let i = 0; i < 24; i++) {
+    const count = mode === 'Calm' ? 14 : mode === 'Playful' ? 24 : 34;
+    for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
-      const sp = style === 'Exploding' ? Math.random() * 4 + 1 : Math.random() * 1.5 + 0.2;
+      let sp = style === 'Exploding' ? Math.random() * 4 + 1 : Math.random() * 1.5 + 0.2;
+      if (mode === 'Calm') sp *= 0.6; if (mode === 'Chaotic') sp *= 1.4;
       const vx = Math.cos(a) * sp;
       const vy = Math.sin(a) * sp;
-      arr.push({ id: Date.now() + Math.random(), x, y, vx, vy, life: 1, maxLife: 1 + Math.random() * 1.5, color: pick(colors) });
+      const maxLife = (mode === 'Calm' ? 1.8 : mode === 'Playful' ? 1.2 : 0.9) + Math.random() * 0.8;
+      arr.push({ id: Date.now() + Math.random(), x, y, vx, vy, life: 1, maxLife, color: pick(colors) });
     }
   };
 
@@ -60,16 +65,20 @@ const ParticlesPlayground: React.FC = () => {
 
       // Soft gradient background
       const g = ctx.createLinearGradient(0, 0, 0, height);
-      g.addColorStop(0, '#fce7f3'); g.addColorStop(0.5, '#e9d5ff'); g.addColorStop(1, '#a7f3d0');
+      if (theme === 'Dark') { g.addColorStop(0,'#1f2937'); g.addColorStop(0.5,'#0f172a'); g.addColorStop(1,'#111827'); }
+      else if (theme === 'Neon') { g.addColorStop(0,'#0b1020'); g.addColorStop(0.5,'#19203a'); g.addColorStop(1,'#0b1020'); }
+      else if (theme === 'Magical') { g.addColorStop(0,'#f0abfc'); g.addColorStop(0.5,'#a78bfa'); g.addColorStop(1,'#60a5fa'); }
+      else { g.addColorStop(0,'#fce7f3'); g.addColorStop(0.5,'#e9d5ff'); g.addColorStop(1,'#a7f3d0'); }
       ctx.fillStyle = g; ctx.fillRect(0, 0, width, height);
 
       const arr = particlesRef.current;
       for (let i = 0; i < arr.length; i++) {
         const p = arr[i];
         // physics
-        if (style === 'Floating') p.vy -= 0.003; // drift up
-        if (style === 'Bouncing') p.vy += 0.05; // gravity
-        p.x += p.vx; p.y += p.vy; p.life -= 0.01;
+        const decay = mode === 'Calm' ? 0.006 : mode === 'Playful' ? 0.01 : 0.018;
+        if (style === 'Floating') p.vy -= 0.003;
+        if (style === 'Bouncing') p.vy += 0.05;
+        p.x += p.vx; p.y += p.vy; p.life -= decay;
 
         if (style === 'Bouncing') {
           if (p.y > height - 8) { p.y = height - 8; p.vy *= -0.7; }
@@ -79,7 +88,7 @@ const ParticlesPlayground: React.FC = () => {
         ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
         ctx.fillStyle = p.color;
         ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowColor = p.color; ctx.shadowBlur = palette === 'Neon' ? 20 : 8; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+        ctx.shadowColor = p.color; ctx.shadowBlur = palette === 'Neon' || theme==='Neon' ? 20 : 8; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
       }
       ctx.globalAlpha = 1;
       particlesRef.current = arr.filter(p => p.life > 0);

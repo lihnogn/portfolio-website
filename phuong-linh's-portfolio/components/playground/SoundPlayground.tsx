@@ -15,6 +15,7 @@ const SoundPlayground: React.FC = () => {
   const [soundSet, setSoundSet] = useState<SoundSet>('Piano');
   const [muted, setMuted] = useState(false);
   const [pulses, setPulses] = useState<ClickPulse[]>([]);
+  const { theme, mode } = usePlaygroundSettings();
 
   const synthRef = useRef<Tone.PolySynth | null>(null);
   const fmRef = useRef<Tone.MembraneSynth | null>(null);
@@ -24,6 +25,10 @@ const SoundPlayground: React.FC = () => {
     if (muted) return;
     await Tone.start();
     const now = Tone.now();
+    // Adjust master volume by interaction mode
+    if (mode === 'Calm') Tone.Destination.volume.value = -10;
+    if (mode === 'Playful') Tone.Destination.volume.value = -4;
+    if (mode === 'Chaotic') Tone.Destination.volume.value = 0;
     switch (soundSet) {
       case 'Piano':
         if (!synthRef.current) synthRef.current = new Tone.PolySynth(Tone.Synth).toDestination();
@@ -52,14 +57,14 @@ const SoundPlayground: React.FC = () => {
       <div
         ref={containerRef}
         className="relative w-full overflow-hidden rounded-2xl shadow-xl"
-        style={{ height: 'min(500px, 56vw)', background: 'linear-gradient(135deg,#fce7f3,#e9d5ff,#a7f3d0)' }}
+        style={{ height: 'min(500px, 56vw)', background: theme==='Dark'? 'linear-gradient(135deg,#1f2937,#0f172a,#111827)': theme==='Neon'? 'radial-gradient(circle at 30% 30%, #ff61f6, transparent 40%), radial-gradient(circle at 70% 70%, #7afcff, transparent 40%), #0b1020' : theme==='Magical'? 'linear-gradient(135deg,#f0abfc,#a78bfa,#60a5fa)' : 'linear-gradient(135deg,#fce7f3,#e9d5ff,#a7f3d0)' }}
         onClick={(e) => {
           const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
           playNote(e.clientX - rect.left, e.clientY - rect.top);
         }}
       >
         {pulses.map(p => (
-          <span key={p.id} className="absolute rounded-full" style={{ left: p.x-6, top: p.y-6, width: 12, height: 12, backgroundColor: p.color, boxShadow: `0 0 20px ${p.color}`, pointerEvents:'none' }} />
+          <span key={p.id} className="absolute rounded-full" style={{ left: p.x-6, top: p.y-6, width: 12, height: 12, backgroundColor: p.color, boxShadow: `0 0 ${mode==='Neon' ? 28 : 20}px ${p.color}`, pointerEvents:'none' }} />
         ))}
       </div>
 

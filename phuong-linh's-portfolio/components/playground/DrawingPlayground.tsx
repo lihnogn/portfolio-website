@@ -17,11 +17,13 @@ const STORAGE_KEY = 'playground_drawing_strokes_v1';
 const DrawingPlayground: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sketchRef = useRef<p5Types | null>(null);
+  const graphicsRef = useRef<p5Types.Graphics | null>(null);
   const [brushColor, setBrushColor] = useState<string>('#f472b6');
   const [brushSize, setBrushSize] = useState<BrushSize>('M');
   const [erasing, setErasing] = useState(false);
   const strokesRef = useRef<Segment[]>([]);
   const prevPosRef = useRef<{x:number;y:number}|null>(null);
+  const { theme, mode } = usePlaygroundSettings();
 
   const brushColorRef = useRef<string>(brushColor);
   const brushSizeRef = useRef<BrushSize>(brushSize);
@@ -63,6 +65,7 @@ const DrawingPlayground: React.FC = () => {
           const { width, height } = getSize();
           const c = p.createCanvas(width, height); c.parent(containerRef.current!);
           g = p.createGraphics(width, height);
+          graphicsRef.current = g;
           strokesRef.current = loadStrokes();
           // redraw existing strokes
           strokesRef.current.forEach(seg => {
@@ -74,6 +77,7 @@ const DrawingPlayground: React.FC = () => {
           const { width, height } = getSize();
           p.resizeCanvas(width, height);
           const old = g; g = p.createGraphics(width, height); g.clear();
+          graphicsRef.current = g;
           strokesRef.current.forEach(seg => {
             if (seg.erase) (g as any).erase(); else { (g as any).noErase(); g.stroke(seg.color as any); }
             g.strokeWeight(seg.size); g.strokeCap(p.ROUND); g.line(seg.x1, seg.y1, seg.x2, seg.y2);
@@ -85,16 +89,32 @@ const DrawingPlayground: React.FC = () => {
         p.mouseReleased = () => { prevPosRef.current = null; };
         p.mouseDragged = () => {
           if (!isInside() || !prevPosRef.current) return;
+          // Smooth toward current mouse
           const { x, y } = prevPosRef.current;
+          const lerpFactor = mode === 'Calm' ? 0.3 : mode === 'Playful' ? 0.5 : 0.8;
+          const nx = x + (p.mouseX - x) * lerpFactor;
+          const ny = y + (p.mouseY - y) * lerpFactor;
           const seg: Segment = { x1:x, y1:y, x2:p.mouseX, y2:p.mouseY, color: brushColorRef.current, size: sizeToPx(brushSizeRef.current), erase: erasingRef.current };
           if (seg.erase) (g as any).erase(); else { (g as any).noErase(); g.stroke(seg.color as any); }
-          g.strokeWeight(seg.size); g.strokeCap(p.ROUND); g.line(seg.x1, seg.y1, seg.x2, seg.y2);
+          g.strokeWeight(seg.size);
+          g.strokeCap(p.ROUND);
+          // draw a short segment with smoothing
+          g.line(x, y, nx, ny);
           strokesRef.current.push(seg); saveStrokes();
-          prevPosRef.current = { x: p.mouseX, y: p.mouseY };
+          prevPosRef.current = { x: nx, y: ny };
         };
         p.draw = () => {
-          const top = p.color('#fce7f3'), mid = p.color('#e9d5ff'), bot = p.color('#a7f3d0');
-          for (let y=0;y<p.height;y++){ const t=y/p.height; const c=t<.5? p.lerpColor(top,mid,t*2): p.lerpColor(mid,bot,(t-.5)*2); p.stroke(c as any); p.line(0,y,p.width,y);}        
+          // Theme-based background
+          let top = '#fce7f3', mid = '#e9d5ff', bot = '#a7f3d0';
+          if (theme === 'Dark') { top = '#1f2937'; mid = '#0f172a'; bot = '#111827'; }
+          if (theme === 'Neon') { top = '#0b1020'; mid = '#19203a'; bot = '#0b1020'; }
+          if (theme === 'Magical') { top = '#f0abfc'; mid = '#a78bfa'; bot = '#60a5fa'; }
+          const ct = p.color(top), cm = p.color(mid), cb = p.color(bot);
+          for (let y=0;y<p.height;y++){
+            const t=y/p.height;
+            const c=t<.5? p.lerpColor(ct,cm,t*2): p.lerpColor(cm,cb,(t-.5)*2);
+            p.stroke(c as any); p.line(0,y,p.width,y);
+          }
           p.noStroke(); p.fill(255,255,255,40); p.rect(0,0,p.width,p.height);
           p.image(g,0,0);
         };
@@ -103,9 +123,16 @@ const DrawingPlayground: React.FC = () => {
     };
     load();
     return () => { mounted = false; if (sketchRef.current){ sketchRef.current.remove(); sketchRef.current=null; } };
-  }, []);
+  }, [theme, mode]);
 
-  const onClear = () => { strokesRef.current = []; localStorage.setItem(STORAGE_KEY, '[]'); window.location.hash = window.location.hash; };
+  const onClear = () => {
+    strokesRef.current = [];
+    localStorage.setItem(STORAGE_KEY, '[]');
+    const g = graphicsRef.current;
+    if (g) {
+      g.clear();
+    }
+  };
   const onDownload = () => { const p:any = sketchRef.current as any; if (p?.saveCanvas) p.saveCanvas('playground-drawing','png'); };
 
   return (
