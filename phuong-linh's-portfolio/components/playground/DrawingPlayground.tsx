@@ -18,6 +18,7 @@ const DrawingPlayground: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sketchRef = useRef<p5Types | null>(null);
   const graphicsRef = useRef<p5Types.Graphics | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [brushColor, setBrushColor] = useState<string>('#f472b6');
   const [brushSize, setBrushSize] = useState<BrushSize>('M');
   const [erasing, setErasing] = useState(false);
@@ -58,8 +59,23 @@ const DrawingPlayground: React.FC = () => {
         const getSize = () => {
           const el = containerRef.current;
           const width = el ? el.clientWidth : window.innerWidth;
-          const height = Math.min(MAX_HEIGHT, Math.round(width * 0.5));
+          // Use the container's actual height so the canvas fills the CSS-sized box
+          // Fallback mirrors the CSS: height: min(500px, 56vw)
+          const height = el && el.clientHeight
+            ? el.clientHeight
+            : Math.min(MAX_HEIGHT, Math.round(window.innerWidth * 0.56));
           return { width, height };
+        };
+        const doResize = () => {
+          const { width, height } = getSize();
+          p.resizeCanvas(width, height);
+          const old = g; g = p.createGraphics(width, height); g.clear();
+          graphicsRef.current = g;
+          strokesRef.current.forEach(seg => {
+            if (seg.erase) (g as any).erase(); else { (g as any).noErase(); g.stroke(seg.color as any); }
+            g.strokeWeight(seg.size); g.strokeCap(p.ROUND); g.line(seg.x1, seg.y1, seg.x2, seg.y2);
+          });
+          old.remove();
         };
         p.setup = () => {
           const { width, height } = getSize();
@@ -72,18 +88,15 @@ const DrawingPlayground: React.FC = () => {
             if (seg.erase) (g as any).erase(); else { (g as any).noErase(); g.stroke(seg.color as any); }
             g.strokeWeight(seg.size); g.strokeCap(p.ROUND); g.line(seg.x1, seg.y1, seg.x2, seg.y2);
           });
+          // Observe container size changes to keep canvas perfectly in sync
+          const el = containerRef.current;
+          if (el && 'ResizeObserver' in window) {
+            const ro = new ResizeObserver(() => { doResize(); });
+            ro.observe(el);
+            resizeObserverRef.current = ro;
+          }
         };
-        p.windowResized = () => {
-          const { width, height } = getSize();
-          p.resizeCanvas(width, height);
-          const old = g; g = p.createGraphics(width, height); g.clear();
-          graphicsRef.current = g;
-          strokesRef.current.forEach(seg => {
-            if (seg.erase) (g as any).erase(); else { (g as any).noErase(); g.stroke(seg.color as any); }
-            g.strokeWeight(seg.size); g.strokeCap(p.ROUND); g.line(seg.x1, seg.y1, seg.x2, seg.y2);
-          });
-          old.remove();
-        };
+        p.windowResized = () => { doResize(); };
         const isInside = () => p.mouseX>=0 && p.mouseX<=p.width && p.mouseY>=0 && p.mouseY<=p.height;
         p.mousePressed = () => { if (!isInside()) return; prevPosRef.current = { x:p.mouseX, y:p.mouseY }; };
         p.mouseReleased = () => { prevPosRef.current = null; };
@@ -122,7 +135,11 @@ const DrawingPlayground: React.FC = () => {
       sketchRef.current = new P5(sketch as any);
     };
     load();
-    return () => { mounted = false; if (sketchRef.current){ sketchRef.current.remove(); sketchRef.current=null; } };
+    return () => {
+      mounted = false;
+      if (resizeObserverRef.current) { resizeObserverRef.current.disconnect(); resizeObserverRef.current = null; }
+      if (sketchRef.current){ sketchRef.current.remove(); sketchRef.current=null; }
+    };
   }, [theme, mode]);
 
   const onClear = () => {
@@ -145,16 +162,16 @@ const DrawingPlayground: React.FC = () => {
               <button key={c} onClick={()=>{ setBrushColor(c); setErasing(false); }} className="w-7 h-7 rounded-full border" style={{ backgroundColor:c, borderColor:'rgba(0,0,0,0.1)', boxShadow: brushColor===c && !erasing ? '0 0 0 3px rgba(255,255,255,0.8)':'none' }} />
             ))}
             {(['S','M','L'] as BrushSize[]).map(s => (
-              <button key={s} onClick={()=>setBrushSize(s)} className="px-2 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor:'var(--bg-card)', color:'var(--text-main)', border:'1px solid var(--border-color)', boxShadow: brushSize===s ? '0 0 0 2px var(--brand-color)':'none' }}>{s}</button>
+              <button key={s} onClick={()=>setBrushSize(s)} className="px-2 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor:'var(--bg-card)', color:'var(--text-main)', border:'1px solid var(--border-color)', boxShadow: brushSize===s ? '0 0 0 2px var(--brand-color)':'none' }}>{s}</button>
             ))}
           </div>
           <div className="pointer-events-auto flex items-center gap-2">
-            <button onClick={()=>setErasing(v=>!v)} className="px-3 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor: erasing ? 'var(--accent-color-2)':'var(--button-bg)', color:'var(--button-text)'}}>{erasing?'Eraser: ON':'Eraser'}</button>
-            <button onClick={onClear} className="px-3 py-2 rounded-xl text-sm font-bold" style={{ backgroundColor:'var(--button-bg)', color:'var(--button-text)'}}>Clear</button>
+            <button onClick={()=>setErasing(v=>!v)} className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ backgroundColor: erasing ? 'var(--accent-color-2)':'var(--button-bg)', color:'var(--button-text)'}}>{erasing?'Eraser: ON':'Eraser'}</button>
+            <button onClick={onClear} className="px-3 py-2 rounded-xl text-sm font-semibold" style={{ backgroundColor:'var(--button-bg)', color:'var(--button-text)'}}>Clear</button>
           </div>
         </div>
       </div>
-      <div className="w-full flex justify-center mt-4">
+      <div className="w-full flex justify-center mt-3">
         <button onClick={onDownload} className="px-6 py-3 rounded-full font-bold transition-all" style={{ background:'linear-gradient(90deg,#fbcfe8 0%,#e9d5ff 50%,#a7f3d0 100%)', color:'#4b5563', boxShadow:'0 6px 20px rgba(200,160,255,0.35)'}} onMouseEnter={(e)=>{(e.currentTarget as HTMLButtonElement).style.boxShadow='0 10px 28px rgba(200,160,255,0.55)';}} onMouseLeave={(e)=>{(e.currentTarget as HTMLButtonElement).style.boxShadow='0 6px 20px rgba(200,160,255,0.35)';}}>Download My Playground Art</button>
       </div>
     </div>
