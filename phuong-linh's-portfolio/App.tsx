@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Project, TimelineEvent } from './types';
 import ProjectCard from './components/ProjectCard';
 import { MailIcon, InstagramIcon, GithubIcon, FlowerIcon, StarIcon, SparkleIcon, HeartIcon, SunIcon, MoonIcon } from './components/Icons';
+import Playground from './components/Playground';
 
 // --- DATA CONFIGURATION ---
 const PROJECTS: Project[] = [
@@ -121,7 +122,9 @@ const ClickBloomEffect = () => {
         <>
             {blooms.map(bloom => (
                 <div key={bloom.id} className="bloom" style={{ left: `${bloom.x}px`, top: `${bloom.y}px` }}>
-                    <SparkleIcon className="h-8 w-8" style={{ color: bloom.color }} />
+                    <span style={{ color: bloom.color }}>
+                      <SparkleIcon className="h-8 w-8" />
+                    </span>
                 </div>
             ))}
         </>
@@ -268,6 +271,7 @@ const App = () => {
   const [homeRef] = useScrollAnimation<HTMLDivElement>();
   const [aboutRef] = useScrollAnimation<HTMLDivElement>();
   const [projectsRef] = useScrollAnimation<HTMLDivElement>();
+  const [playgroundRef] = useScrollAnimation<HTMLDivElement>();
   const [timelineRef] = useScrollAnimation<HTMLDivElement>();
   const [contactRef] = useScrollAnimation<HTMLDivElement>();
 
@@ -317,6 +321,17 @@ const App = () => {
                 <ProjectCard key={project.title} project={project} />
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* Interactive Playground Section */}
+        <section id="playground" className="py-24 md:py-32">
+          <div ref={playgroundRef} className="scroll-reveal container mx-auto px-6 max-w-5xl">
+            <h2 className="font-brand text-5xl text-center" style={{ color: 'var(--text-main)' }}>Playground</h2>
+            <p className="text-center mt-3 mb-10 text-lg" style={{ color: 'var(--text-light)' }}>
+              Experiment with interactive art directly on my website ✨
+            </p>
+            <Playground />
           </div>
         </section>
 
