@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Project, TimelineEvent } from './types';
 import ProjectCard from './components/ProjectCard';
 import { MailIcon, InstagramIcon, GithubIcon, FlowerIcon, StarIcon, SparkleIcon, HeartIcon, SunIcon, MoonIcon } from './components/Icons';
-import Playground from './components/Playground';
+import PlaygroundContainer from './components/PlaygroundContainer';
 
 // --- DATA CONFIGURATION ---
 const PROJECTS: Project[] = [
@@ -333,7 +333,7 @@ const App = () => {
             <p className="text-center mt-3 mb-10 text-lg" style={{ color: 'var(--text-light)' }}>
               Experiment with interactive art directly on my website ✨
             </p>
-            <Playground />
+            <PlaygroundContainer />
           </div>
         </section>
 
