@@ -45,6 +45,7 @@ const NAV_LINKS = [
   { href: '#home', label: 'Home' },
   { href: '#about', label: 'About' },
   { href: '#projects', label: 'Projects' },
+  { href: '#playground', label: 'Playground' },
   { href: '#timeline', label: 'Timeline' },
   { href: '#contact', label: 'Contact' },
 ];
@@ -250,6 +251,7 @@ const App = () => {
     home: useRef<HTMLElement>(null),
     about: useRef<HTMLElement>(null),
     projects: useRef<HTMLElement>(null),
+    playground: useRef<HTMLElement>(null),
     timeline: useRef<HTMLElement>(null),
     contact: useRef<HTMLElement>(null),
   };
@@ -325,7 +327,7 @@ const App = () => {
         </section>
 
         {/* Interactive Playground Section */}
-        <section id="playground" className="py-24 md:py-32">
+        <section ref={sectionRefs.playground} id="playground" className="py-24 md:py-32">
           <div ref={playgroundRef} className="scroll-reveal container mx-auto px-6 max-w-5xl">
             <h2 className="font-brand text-5xl text-center" style={{ color: 'var(--text-main)' }}>Playground</h2>
             <p className="text-center mt-3 mb-10 text-lg" style={{ color: 'var(--text-light)' }}>

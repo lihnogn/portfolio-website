@@ -7,13 +7,42 @@ const PASTELS = ['#fbcfe8', '#e9d5ff', '#a7f3d0', '#fef9c3', '#c7d2fe', '#ffd6e7
 // Section size
 const MAX_HEIGHT = 500;
 
-export type PlaygroundMode = 'Flower' | 'Bubble' | 'Wave' | 'Particle';
+type BrushSize = 'S' | 'M' | 'L';
+type Segment = {
+  x1: number; y1: number; x2: number; y2: number;
+  color: string; size: number; erase?: boolean;
+};
 
 const Playground: React.FC = () => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sketchRef = useRef<p5Types | null>(null);
-  const [mode, setMode] = useState<PlaygroundMode>('Flower');
   const [isReady, setIsReady] = useState(false);
+  const [brushColor, setBrushColor] = useState<string>('#f472b6');
+  const [brushSize, setBrushSize] = useState<BrushSize>('M');
+  const [erasing, setErasing] = useState(false);
+  const brushColorRef = useRef<string>(brushColor);
+  const brushSizeRef = useRef<BrushSize>(brushSize);
+  const erasingRef = useRef<boolean>(erasing);
+  const strokesRef = useRef<Segment[]>([]);
+  const prevPosRef = useRef<{x:number;y:number}|null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const sizeToPx = (s: BrushSize) => s === 'S' ? 4 : s === 'M' ? 8 : 14;
+  const saveStrokes = () => {
+    try {
+      localStorage.setItem('playground_strokes', JSON.stringify(strokesRef.current));
+    } catch {}
+  };
+  const loadStrokes = (): Segment[] => {
+    try {
+      const raw = localStorage.getItem('playground_strokes');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as Segment[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -24,14 +53,7 @@ const Playground: React.FC = () => {
       if (!mounted) return;
 
       const sketch = (p: p5Types) => {
-        // State containers for effects
-        let flowers: any[] = [];
-        let bubbles: any[] = [];
-        let waves: any[] = [];
-        let particles: any[] = [];
-
-        const pick = () => PASTELS[Math.floor(Math.random() * PASTELS.length)];
-
+        let g: p5Types.Graphics;
         const getSize = () => {
           const el = containerRef.current;
           const width = el ? el.clientWidth : window.innerWidth;
@@ -43,125 +65,88 @@ const Playground: React.FC = () => {
           const { width, height } = getSize();
           const c = p.createCanvas(width, height);
           c.parent(containerRef.current!);
-          p.noStroke();
+          g = p.createGraphics(width, height);
+          // load strokes from storage
+          strokesRef.current = loadStrokes();
         };
 
         p.windowResized = () => {
           const { width, height } = getSize();
           p.resizeCanvas(width, height);
-        };
-
-        p.mousePressed = () => {
-          if (!isInside()) return;
-          const x = p.mouseX;
-          const y = p.mouseY;
-          switch (mode) {
-            case 'Flower':
-              flowers.push({ x, y, created: p.millis(), base: p.random(12, 22), color: pick() });
-              break;
-            case 'Bubble':
-              for (let i = 0; i < 6; i++) {
-                bubbles.push({ x, y, r: p.random(8, 18), vy: p.random(-1.5, -0.5), color: pick(), life: 255 });
-              }
-              break;
-            case 'Wave':
-              waves.push({ x, y, r: 0, alpha: 180, color: pick() });
-              break;
-            case 'Particle':
-              for (let i = 0; i < 16; i++) {
-                const a = p.random(p.TWO_PI);
-                const speed = p.random(0.5, 2.2);
-                particles.push({ x, y, vx: Math.cos(a) * speed, vy: Math.sin(a) * speed, alpha: 255, color: pick() });
-              }
-              break;
-          }
+          // Recreate offscreen and redraw current strokes for new size
+          const old = g;
+          g = p.createGraphics(width, height);
+          g.clear();
+          // Redraw strokes onto new buffer with same coordinates (no scaling)
+          strokesRef.current.forEach(seg => {
+            if (seg.erase) {
+              (g as any).erase();
+            } else {
+              (g as any).noErase();
+              g.stroke(seg.color as any);
+            }
+            g.strokeWeight(seg.size);
+            g.strokeCap(p.ROUND);
+            g.line(seg.x1, seg.y1, seg.x2, seg.y2);
+          });
+          old.remove();
         };
 
         const isInside = () => p.mouseX >= 0 && p.mouseX <= p.width && p.mouseY >= 0 && p.mouseY <= p.height;
 
+        p.mousePressed = () => {
+          if (!isInside()) return;
+          prevPosRef.current = { x: p.mouseX, y: p.mouseY };
+        };
+
+        p.mouseReleased = () => {
+          prevPosRef.current = null;
+        };
+
+        p.mouseDragged = () => {
+          if (!isInside() || !prevPosRef.current) return;
+          const { x, y } = prevPosRef.current;
+          const seg: Segment = {
+            x1: x, y1: y, x2: p.mouseX, y2: p.mouseY,
+            color: brushColorRef.current,
+            size: sizeToPx(brushSizeRef.current),
+            erase: erasingRef.current,
+          };
+          // Draw onto offscreen buffer directly
+          if (seg.erase) {
+            (g as any).erase();
+          } else {
+            (g as any).noErase();
+            g.stroke(seg.color as any);
+          }
+          g.strokeWeight(seg.size);
+          g.strokeCap(p.ROUND);
+          g.line(seg.x1, seg.y1, seg.x2, seg.y2);
+          strokesRef.current.push(seg);
+          saveStrokes();
+          prevPosRef.current = { x: p.mouseX, y: p.mouseY };
+        };
+
         p.draw = () => {
-          // Background gradient
-          const gTop = p.color('#fce7f3'); // pink
-          const gBottom = p.color('#bfdbfe'); // blue
+          // Background pastel gradient (pink -> purple -> mint)
+          const top = p.color('#fce7f3');
+          const mid = p.color('#e9d5ff');
+          const bot = p.color('#a7f3d0');
           for (let y = 0; y < p.height; y++) {
-            const inter = p.map(y, 0, p.height, 0, 1);
-            const c = p.lerpColor(gTop, gBottom, inter);
+            const t = y / p.height;
+            // two-step gradient
+            const c = t < 0.5 ? p.lerpColor(top, mid, t * 2) : p.lerpColor(mid, bot, (t - 0.5) * 2);
             p.stroke(c as any);
             p.line(0, y, p.width, y);
           }
 
-          // Soft overlay for depth
+          // Soft overlay
           p.noStroke();
           p.fill(255, 255, 255, 40);
           p.rect(0, 0, p.width, p.height);
 
-          // Update and draw Flowers
-          flowers = flowers.filter((f: any) => p.millis() - f.created < 3000);
-          flowers.forEach((f: any) => {
-            const t = (p.millis() - f.created) / 3000;
-            const petals = 5;
-            for (let i = 0; i < petals; i++) {
-              const angle = (p.TWO_PI / petals) * i + t * 2;
-              const px = f.x + Math.cos(angle) * (f.base + t * 40);
-              const py = f.y + Math.sin(angle) * (f.base + t * 40);
-              p.fill(p.color(f.color) as any);
-              p.ellipse(px, py, 24 + t * 18, 24 + t * 18);
-            }
-            // Glow center
-            p.fill(255, 255, 224, 200);
-            p.ellipse(f.x, f.y, 26 + Math.sin(t * 6) * 4);
-          });
-
-          // Update and draw Bubbles
-          bubbles.forEach((b: any) => {
-            b.y += b.vy;
-            b.x += p.random(-0.5, 0.5);
-            p.noFill();
-            const c = p.color(b.color) as any;
-            p.stroke(c);
-            p.strokeWeight(2);
-            p.circle(b.x, b.y, b.r * 2);
-            // Burst near top
-            if (b.y < 20) {
-              for (let i = 0; i < 10; i++) {
-                particles.push({ x: b.x, y: b.y, vx: p.random(-2, 2), vy: p.random(-2, 2), alpha: 180, color: pick() });
-              }
-              b.life = 0;
-            }
-            b.life -= 2;
-          });
-          bubbles = bubbles.filter((b: any) => b.life > 0);
-
-          // Update and draw Waves
-          waves.forEach((w: any) => {
-            w.r += 2.2;
-            w.alpha -= 2.2;
-            p.noFill();
-            const c = p.color(w.color) as any;
-            (c as any).setAlpha(Math.max(0, w.alpha));
-            p.stroke(c);
-            p.strokeWeight(3);
-            p.circle(w.x, w.y, w.r * 2);
-          });
-          waves = waves.filter((w: any) => w.alpha > 0);
-
-          // Update and draw Particles
-          // Passive sparkle trail when in Particle mode and mouse is inside
-          if (mode === 'Particle' && isInside() && p.frameCount % 3 === 0) {
-            particles.push({ x: p.mouseX, y: p.mouseY, vx: p.random(-0.8, 0.8), vy: p.random(-0.8, 0.8), alpha: 200, color: pick() });
-          }
-
-          particles.forEach((pt: any) => {
-            pt.x += pt.vx;
-            pt.y += pt.vy;
-            pt.alpha -= 3;
-            const c = p.color(pt.color) as any;
-            (c as any).setAlpha(Math.max(0, pt.alpha));
-            p.noStroke();
-            p.fill(c);
-            p.circle(pt.x, pt.y, 6);
-          });
-          particles = particles.filter((pt: any) => pt.alpha > 0);
+          // Composite drawing layer
+          p.image(g, 0, 0);
         };
 
       };
@@ -180,11 +165,18 @@ const Playground: React.FC = () => {
         sketchRef.current = null;
       }
     };
-  }, [mode]);
+  }, [refreshKey]);
 
-  const onReset = () => {
-    // Recreate the sketch by toggling mode to itself (forces effect state reset via unmount/remount)
-    setMode((prev) => prev);
+  // Sync refs when UI state changes
+  useEffect(() => { brushColorRef.current = brushColor; }, [brushColor]);
+  useEffect(() => { brushSizeRef.current = brushSize; }, [brushSize]);
+  useEffect(() => { erasingRef.current = erasing; }, [erasing]);
+
+  const onClear = () => {
+    strokesRef.current = [];
+    saveStrokes();
+    // Trigger re-initialization to clear offscreen buffer
+    setRefreshKey((k) => k + 1);
   };
 
   const onDownload = () => {
@@ -209,27 +201,47 @@ const Playground: React.FC = () => {
       {/* UI overlay */}
       <div className="absolute inset-x-0 top-0 pointer-events-none" style={{ padding: 12 }}>
         <div className="flex justify-between" style={{ gap: 12 }}>
-          <div className="pointer-events-auto">
-            <select
-              aria-label="Mode selector"
-              value={mode}
-              onChange={(e) => setMode(e.target.value as PlaygroundMode)}
-              className="px-3 py-2 rounded-xl text-sm font-semibold"
-              style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
-            >
-              <option>Flower</option>
-              <option>Bubble</option>
-              <option>Wave</option>
-              <option>Particle</option>
-            </select>
+          {/* Left controls: colors and sizes */}
+          <div className="pointer-events-auto flex items-center gap-2 flex-wrap">
+            {/* Color presets */}
+            {['#f472b6', '#a78bfa', '#34d399', '#facc15', '#60a5fa'].map((c) => (
+              <button
+                key={c}
+                onClick={() => { setBrushColor(c); setErasing(false); }}
+                className="w-7 h-7 rounded-full border"
+                style={{ backgroundColor: c, borderColor: 'rgba(0,0,0,0.1)', boxShadow: brushColor === c && !erasing ? '0 0 0 3px rgba(255,255,255,0.8)' : 'none' }}
+                aria-label={`Brush color ${c}`}
+                title={`Brush color ${c}`}
+              />
+            ))}
+
+            {/* Size presets */}
+            {(['S','M','L'] as BrushSize[]).map((s) => (
+              <button
+                key={s}
+                onClick={() => setBrushSize(s)}
+                className="px-2 py-1 rounded-lg text-xs font-bold"
+                style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border-color)', boxShadow: brushSize === s ? '0 0 0 2px var(--brand-color)' : 'none' }}
+                aria-label={`Brush size ${s}`}
+              >{s}</button>
+            ))}
           </div>
-          <div className="pointer-events-auto">
+
+          {/* Right controls: Eraser and Clear */}
+          <div className="pointer-events-auto flex items-center gap-2">
             <button
-              onClick={onReset}
+              onClick={() => setErasing((v) => !v)}
+              className="px-3 py-2 rounded-xl text-sm font-bold"
+              style={{ backgroundColor: erasing ? 'var(--accent-color-2)' : 'var(--button-bg)', color: 'var(--button-text)' }}
+            >
+              {erasing ? 'Eraser: ON' : 'Eraser'}
+            </button>
+            <button
+              onClick={onClear}
               className="px-3 py-2 rounded-xl text-sm font-bold"
               style={{ backgroundColor: 'var(--button-bg)', color: 'var(--button-text)' }}
             >
-              Reset
+              Clear
             </button>
           </div>
         </div>
